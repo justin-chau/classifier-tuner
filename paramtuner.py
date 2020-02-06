@@ -13,9 +13,9 @@ import matplotlib.image as mpimg
 from tensorflow.python.keras.models import Sequential
 from tensorflow.python.keras.layers import Dense, Dropout, Flatten
 from os import path
-import itertools
 import pathlib
 import random
+import math
 
 class ModelTypes:
     TYPE_MLP = "MLP"
@@ -30,6 +30,8 @@ class ParamTuner:
         self.tuner_type = tuner_type
         self.population = []
         self.population_size = 0
+        self.tournamet_size = 2
+        self.fitness_history = []
 
     def load_images(self, directory, show=False):
         self.directory = directory
@@ -55,6 +57,8 @@ class ParamTuner:
         return img
     
     def display_batch(self):
+        print("")
+        print("Confirm that the images are labeled correctly and then exit.", end="\n\n")
         image_generator = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255)
         train_data_gen = image_generator.flow_from_directory(directory=str(self.full_directory),
                                                             batch_size=25,
@@ -71,12 +75,13 @@ class ParamTuner:
 
         plt.show()
         
-    def initialize_MLP_population(self, population_size, n_input=1, n_output=1, n_nodes=100,
+    def initialize_population(self, population_size, tournamet_size=2, n_input=1, n_output=1, n_nodes=100,
                                 n_epochs=100, batch_size=100, n_hidden_layers=0, dropout=1,
                                 activation_in='tanh',loss_fcn='mse',optimizer='adam', activation_out='tanh',
                                 output_layer=True):
         
         self.population_size = population_size
+        self.tournamet_size = tournamet_size
         for i in range(0, population_size):
             self.population.append([
                 random.randint(1,n_input),
@@ -95,11 +100,15 @@ class ParamTuner:
 
     def get_population(self):
         return self.population
-            
-    def fit_MLP(self, chromosome):
+
+    def print_chromosome(self, chromosome):
+        print("")
         print("---------------CURRENT CHROMOSOME--------------", end="\n\n")
         print(chromosome, end="\n\n")
         print("-----------------------------------------------", end="\n\n")
+            
+    def fit_MLP(self, chromosome):
+        self.print_chromosome(chromosome)
         (_, _, n_nodes, n_epochs, n_batch, n_hidden_layers, dropout, act_in, act_out, loss_fcn, optimizer, output_layer) = chromosome
         n_steps_per_epoch = np.ceil(self.image_count/n_batch)
         image_generator = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255)
@@ -112,8 +121,7 @@ class ParamTuner:
         model.add(Flatten(input_shape=(self.image_height, self.image_width, 3)))
 
         model.add(Dense(n_nodes, activation=act_in))
-
-        model.compile(loss = loss_fcn, optimizer = optimizer)
+        
         for i in range(n_hidden_layers):
             model.add(Dense(int(n_nodes/2), activation = act_in))
             model.add(Dropout(dropout))
@@ -121,11 +129,38 @@ class ParamTuner:
         if output_layer:
             model.add(Dense(len(self.class_names), activation = act_out))
 
-        model.fit_generator(
+        model.compile(loss = loss_fcn, optimizer = optimizer)
+
+        history = model.fit_generator(
             train_data_gen,
             steps_per_epoch=n_steps_per_epoch,
             epochs=n_epochs,
         )
+
+        self.fitness_history.append((history.history['loss'][-1], chromosome))
+
+    def run_tournament_selection(self):
+        fittest_loss = math.inf
+        fittest_chromosome = []
+        for i in range(0, self.tournamet_size):
+            random_index = random.randint(0, len(self.fitness_history)-1)
+            if self.fitness_history[random_index][0] < fittest_loss:
+                fittest_loss = self.fitness_history[random_index][0]
+                fittest_chromosome = self.fitness_history[random_index][1]
+
+        return fittest_chromosome
+                
+    
+    def select_parents(self):
+        for i in range(0, self.population_size):
+            parents = []
+            for j in range(0, 2):
+                parents.append(self.run_tournament_selection())
+
+            print("")
+            print("---------------PARENTS SELECTED----------------", end="\n\n")
+            print(parents, end="\n\n")
+            print("-----------------------------------------------", end="\n\n")
 
     def run_tuner(self):
         if self.tuner_type == TunerTypes.TYPE_GENETIC:
@@ -133,5 +168,6 @@ class ParamTuner:
             for chromosome in self.population:
                 self.fit_MLP(chromosome)
 
+            print(self.fitness_history)
 
-        
+            self.select_parents()
