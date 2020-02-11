@@ -3,17 +3,18 @@
 # https://blog.keras.io/building-powerful-image-classification-models-using-very-little-data.html
 # https://www.tutorialspoint.com/genetic_algorithms/genetic_algorithms_fundamentals.htm
 
-
 import tensorflow as tf
+from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras.layers import Dense, Dropout, Flatten
 
-from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from tensorflow.python.keras.models import Sequential
-from tensorflow.python.keras.layers import Dense, Dropout, Flatten
+
+from PIL import Image
 from os import path
 import pathlib
+
 import random
 import math
 
@@ -21,44 +22,24 @@ class ModelTypes:
     TYPE_MLP = "MLP"
     TYPE_CNN = "CNN"
 
-class TunerTypes:
-    TYPE_GENETIC = "GENETIC"
-
-class ParamTuner:
-    def __init__(self, model_type, tuner_type):
+class GeneticTuner:
+    def __init__(self, model_type):
         self.model_type = model_type
-        self.tuner_type = tuner_type
+        self.population_parents = []
         self.population = []
-        self.population_size = 0
-        self.tournamet_size = 2
         self.fitness_history = []
 
     def load_images(self, directory, show=False):
-        self.directory = directory
         self.full_directory = pathlib.Path(path.expanduser("~") + directory)
         self.class_names = np.array([item.name for item in self.full_directory.glob('*')])
         self.image_count = len(list(self.full_directory.glob('*/*.png')))
         self.image_height = self.get_class_example(self.class_names[0]).shape[0]
         self.image_width = self.get_class_example(self.class_names[0]).shape[1]
-        print(self.image_height)
-        print(self.image_width)
-
-    def get_image_count(self):
-        return self.image_count
-
-    def get_class_names(self):
-        return self.class_names
-
-    def get_class_example(self, class_name):
-        class_directory = list(self.full_directory.glob(class_name + "/*"))
-
-        example_directory = class_directory[0]
-        img = plt.imread(str(example_directory))
-        return img
+        self.print_message("CLASSES", self.class_names)
+        self.print_message("IMAGE COUNT", self.image_count)
     
     def display_batch(self):
-        print("")
-        print("Confirm that the images are labeled correctly and then exit.", end="\n\n")
+        self.print_message("NOTICE", "Confirm that the images are labeled correctly and then exit.")
         image_generator = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255)
         train_data_gen = image_generator.flow_from_directory(directory=str(self.full_directory),
                                                             batch_size=25,
@@ -75,66 +56,53 @@ class ParamTuner:
 
         plt.show()
         
-    def initialize_population(self, population_size, tournamet_size=2, n_input=1, n_output=1, n_nodes=100,
-                                n_epochs=100, batch_size=100, n_hidden_layers=0, dropout=1,
-                                activation_in='tanh',loss_fcn='mse',optimizer='adam', activation_out='tanh',
-                                output_layer=True):
+    def initialize_population(self, population_size=10, tournamet_size=2, nodes=100,
+                                epochs=100, batch_size=100, hidden_layers=5, dropout=0.6,
+                                activation_in='tanh', activation_out='tanh', loss_fcn='mse',optimizer='adam'):
         
         self.population_size = population_size
         self.tournamet_size = tournamet_size
+
         for i in range(0, population_size):
             self.population.append([
-                random.randint(1,n_input),
-                random.randint(1,n_output),
-                random.randint(1,n_nodes),
-                random.randint(1,n_epochs),
-                random.randint(1,batch_size),
-                random.randint(0,n_hidden_layers),
-                random.randint(1,dropout),
+                random.randint(1, nodes),
+                random.randint(1, epochs),
+                random.randint(1, batch_size),
+                random.randint(0, hidden_layers),
+                random.uniform(0.0, dropout),
                 activation_in,
                 activation_out,
                 loss_fcn,
-                optimizer,
-                output_layer
+                optimizer
             ])
-
-    def get_population(self):
-        return self.population
-
-    def print_chromosome(self, chromosome):
-        print("")
-        print("---------------CURRENT CHROMOSOME--------------", end="\n\n")
-        print(chromosome, end="\n\n")
-        print("-----------------------------------------------", end="\n\n")
             
-    def fit_MLP(self, chromosome):
-        self.print_chromosome(chromosome)
-        (_, _, n_nodes, n_epochs, n_batch, n_hidden_layers, dropout, act_in, act_out, loss_fcn, optimizer, output_layer) = chromosome
-        n_steps_per_epoch = np.ceil(self.image_count/n_batch)
+    def run_MLP(self, chromosome):
+        self.print_message("Current Chromosome", chromosome)
+        (nodes, epochs, batch_size, hidden_layers, dropout, act_in, act_out, loss_fcn, optimizer) = chromosome
+        steps_per_epoch = np.ceil(self.image_count/batch_size)
         image_generator = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255)
         train_data_gen = image_generator.flow_from_directory(directory=str(self.full_directory),
-                                                            batch_size=n_batch,
+                                                            batch_size=batch_size,
                                                             target_size=(self.image_height, self.image_width),
                                                             classes = list(self.class_names))
 
         model = Sequential()
         model.add(Flatten(input_shape=(self.image_height, self.image_width, 3)))
 
-        model.add(Dense(n_nodes, activation=act_in))
+        model.add(Dense(nodes, activation=act_in))
         
-        for i in range(n_hidden_layers):
-            model.add(Dense(int(n_nodes/2), activation = act_in))
+        for i in range(hidden_layers):
+            model.add(Dense(int(nodes/2), activation = act_in))
             model.add(Dropout(dropout))
 
-        if output_layer:
-            model.add(Dense(len(self.class_names), activation = act_out))
+        model.add(Dense(len(self.class_names), activation = act_out))
 
         model.compile(loss = loss_fcn, optimizer = optimizer)
 
         history = model.fit_generator(
             train_data_gen,
-            steps_per_epoch=n_steps_per_epoch,
-            epochs=n_epochs,
+            steps_per_epoch=steps_per_epoch,
+            epochs=epochs,
         )
 
         self.fitness_history.append((history.history['loss'][-1], chromosome))
@@ -149,7 +117,6 @@ class ParamTuner:
                 fittest_chromosome = self.fitness_history[random_index][1]
 
         return fittest_chromosome
-                
     
     def select_parents(self):
         for i in range(0, self.population_size):
@@ -157,17 +124,39 @@ class ParamTuner:
             for j in range(0, 2):
                 parents.append(self.run_tournament_selection())
 
-            print("")
-            print("---------------PARENTS SELECTED----------------", end="\n\n")
-            print(parents, end="\n\n")
-            print("-----------------------------------------------", end="\n\n")
+            self.print_message("Parents Selected", parents)
+            self.population_parents.append(parents)
+
+    # def crossover(self):
+        
 
     def run_tuner(self):
-        if self.tuner_type == TunerTypes.TYPE_GENETIC:
-
+        if self.model_type == ModelTypes.TYPE_MLP:
             for chromosome in self.population:
-                self.fit_MLP(chromosome)
-
-            print(self.fitness_history)
-
+                self.run_MLP(chromosome)
+            
             self.select_parents()
+            # self.crossover()
+
+    def print_message(self, name, message):
+        header = "---{}-----------------------".format(name)
+
+        print("\n" + header)
+        print(message)
+        print("-"*len(header), end="\n\n")
+
+    def get_image_count(self):
+        return self.image_count
+
+    def get_class_names(self):
+        return self.class_names
+
+    def get_population(self):
+        return self.population
+
+    def get_class_example(self, class_name):
+        class_directory = list(self.full_directory.glob(class_name + "/*"))
+
+        example_directory = class_directory[0]
+        img = plt.imread(str(example_directory))
+        return img
