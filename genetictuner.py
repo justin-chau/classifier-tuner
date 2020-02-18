@@ -35,11 +35,11 @@ class GeneticTuner:
         self.image_count = len(list(self.full_directory.glob('*/*.png')))
         self.image_height = self.get_class_example(self.class_names[0]).shape[0]
         self.image_width = self.get_class_example(self.class_names[0]).shape[1]
-        self.print_message("CLASSES", self.class_names)
-        self.print_message("IMAGE COUNT", self.image_count)
+        self.print_message("Classes", self.class_names)
+        self.print_message("Image Count", self.image_count)
     
     def display_batch(self):
-        self.print_message("NOTICE", "Confirm that the images are labeled correctly and then exit.")
+        self.print_message("Notice", "Confirm that the images are labeled correctly and then exit.")
         image_generator = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255)
         train_data_gen = image_generator.flow_from_directory(directory=str(self.full_directory),
                                                             batch_size=25,
@@ -55,13 +55,29 @@ class GeneticTuner:
             plt.axis('off')
 
         plt.show()
+
+    def getRandomActivation(self):
+        return random.choice(self.activation_in)
+
+    def getRandomActivationOut(self):
+        return random.choice(self.activation_out)
+
+    def getRandomLossFunction(self):
+        return random.choice(self.loss_function)
+
+    def getRandomeOptimizer(self):
+        return random.choice(self.optimizer)
         
     def initialize_population(self, population_size=10, tournamet_size=2, nodes=100,
                                 epochs=100, batch_size=100, hidden_layers=5, dropout=0.6,
-                                activation_in='tanh', activation_out='tanh', loss_fcn='mse',optimizer='adam'):
+                                activation_in=['tanh'], activation_out=['tanh'], loss_function=['mse'], optimizer=['adam']):
         
         self.population_size = population_size
         self.tournamet_size = tournamet_size
+        self.activation_in = activation_in
+        self.activation_out = activation_out
+        self.loss_function = loss_function
+        self.optimizer = optimizer
 
         for i in range(0, population_size):
             self.population.append([
@@ -70,10 +86,10 @@ class GeneticTuner:
                 random.randint(1, batch_size),
                 random.randint(0, hidden_layers),
                 random.uniform(0.0, dropout),
-                activation_in,
-                activation_out,
-                loss_fcn,
-                optimizer
+                self.getRandomActivation(),
+                self.getRandomActivationOut(),
+                self.getRandomLossFunction(),
+                self.getRandomeOptimizer()
             ])
             
     def run_MLP(self, chromosome):
@@ -127,8 +143,12 @@ class GeneticTuner:
             self.print_message("Parents Selected", parents)
             self.population_parents.append(parents)
 
-    # def crossover(self):
-        
+    def crossover(self):
+        for i in range(0, len(self.population)):
+            new_chromosome = self.population_parents[i][0][0:2] + self.population_parents[i][1][2:5] + self.population_parents[i][0][5:]
+            self.population[i] = new_chromosome
+
+            self.print_message("Chromosome Generated", self.population[i])
 
     def run_tuner(self):
         if self.model_type == ModelTypes.TYPE_MLP:
@@ -136,7 +156,7 @@ class GeneticTuner:
                 self.run_MLP(chromosome)
             
             self.select_parents()
-            # self.crossover()
+            self.crossover()
 
     def print_message(self, name, message):
         header = "---{}-----------------------".format(name)

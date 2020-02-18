@@ -8,5 +8,5 @@ tuner = GeneticTuner(ModelTypes.TYPE_MLP)
 tuner.load_images("/adept_data/new_buoy_imgs") #The directory path starts from home ~
 tuner.display_batch()
 
-tuner.initialize_population(population_size=5, epochs=2)
+tuner.initialize_population(population_size=3, epochs=1)
 tuner.run_tuner()
