@@ -12,6 +12,7 @@ import pathlib
 
 import random
 import math
+import json
 
 class ModelTypes:
     TYPE_MLP = "MLP"
@@ -145,6 +146,8 @@ class GeneticTuner:
 
             self.print_message("Parents Selected", parents)
             self.population_parents.append(parents)
+        
+        self.fitness_history = []
 
     def crossover(self):
         for i in range(0, len(self.population)):
@@ -165,8 +168,14 @@ class GeneticTuner:
 
             for i in range(0, generations):
                 self.print_message("New Generation", "Generation" + str(i))
+
                 for chromosome in self.population:
                     self.run_MLP(chromosome)
+
+                with open("fitness_history.json", "w") as f:
+                    data = json.load(f)
+                    data.update({"Generation" + str(i): self.fitness_history})
+                    json.dump(data, f)
                 
                 self.select_parents()
                 self.crossover()
