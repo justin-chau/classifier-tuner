@@ -9,4 +9,4 @@ tuner.load_images("/adept_data/new_buoy_imgs") #The directory path starts from h
 tuner.display_batch()
 
 tuner.initialize_population(population_size=3, epochs=1)
-tuner.run_tuner()
+tuner.run_tuner(generations=2)

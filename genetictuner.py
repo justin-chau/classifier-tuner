@@ -1,8 +1,3 @@
-# https://www.tensorflow.org/tutorials/load_data/images
-# https://www.pyimagesearch.com/2018/12/24/how-to-use-keras-fit-and-fit_generator-a-hands-on-tutorial/
-# https://blog.keras.io/building-powerful-image-classification-models-using-very-little-data.html
-# https://www.tutorialspoint.com/genetic_algorithms/genetic_algorithms_fundamentals.htm
-
 import tensorflow as tf
 from tensorflow.python.keras.models import Sequential
 from tensorflow.python.keras.layers import Dense, Dropout, Flatten
@@ -67,30 +62,38 @@ class GeneticTuner:
 
     def getRandomeOptimizer(self):
         return random.choice(self.optimizer)
-        
+
+    def getRandomChromosome(self):
+        return [
+                random.randint(1, self.nodes),
+                random.randint(1, self.epochs),
+                random.randint(1, self.batch_size),
+                random.randint(0, self.hidden_layers),
+                random.uniform(0.0, self.dropout),
+                self.getRandomActivation(),
+                self.getRandomActivationOut(),
+                self.getRandomLossFunction(),
+                self.getRandomeOptimizer()
+            ]
+
     def initialize_population(self, population_size=10, tournamet_size=2, nodes=100,
                                 epochs=100, batch_size=100, hidden_layers=5, dropout=0.6,
                                 activation_in=['tanh'], activation_out=['tanh'], loss_function=['mse'], optimizer=['adam']):
         
         self.population_size = population_size
         self.tournamet_size = tournamet_size
+        self.nodes = nodes
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.hidden_layers = hidden_layers
+        self.dropout = dropout
         self.activation_in = activation_in
         self.activation_out = activation_out
         self.loss_function = loss_function
         self.optimizer = optimizer
 
         for i in range(0, population_size):
-            self.population.append([
-                random.randint(1, nodes),
-                random.randint(1, epochs),
-                random.randint(1, batch_size),
-                random.randint(0, hidden_layers),
-                random.uniform(0.0, dropout),
-                self.getRandomActivation(),
-                self.getRandomActivationOut(),
-                self.getRandomLossFunction(),
-                self.getRandomeOptimizer()
-            ])
+            self.population.append(self.getRandomChromosome())
             
     def run_MLP(self, chromosome):
         self.print_message("Current Chromosome", chromosome)
@@ -150,13 +153,24 @@ class GeneticTuner:
 
             self.print_message("Chromosome Generated", self.population[i])
 
-    def run_tuner(self):
+    def mutate(self, mutation_rate=0.015):
+        for i in range(0, len(self.population)):
+            random_chromosome = self.getRandomChromosome()
+            for j in range(0, len(random_chromosome)):
+                if random.random() < mutation_rate:
+                    self.population[i][j] = random_chromosome[j]
+
+    def run_tuner(self, generations=5):
         if self.model_type == ModelTypes.TYPE_MLP:
-            for chromosome in self.population:
-                self.run_MLP(chromosome)
-            
-            self.select_parents()
-            self.crossover()
+
+            for i in range(0, generations):
+                self.print_message("New Generation", "Generation" + str(i))
+                for chromosome in self.population:
+                    self.run_MLP(chromosome)
+                
+                self.select_parents()
+                self.crossover()
+                self.mutate()
 
     def print_message(self, name, message):
         header = "---{}-----------------------".format(name)
