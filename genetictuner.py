@@ -12,7 +12,9 @@ import pathlib
 
 import random
 import math
+
 import json
+from json.decoder import JSONDecodeError
 
 class ModelTypes:
     TYPE_MLP = "MLP"
@@ -77,9 +79,9 @@ class GeneticTuner:
                 self.getRandomeOptimizer()
             ]
 
-    def initialize_population(self, population_size=10, tournamet_size=2, nodes=100,
-                                epochs=100, batch_size=100, hidden_layers=5, dropout=0.6,
-                                activation_in=['tanh'], activation_out=['tanh'], loss_function=['mse'], optimizer=['adam']):
+    def initialize_population(self, population_size=10, tournamet_size=5, nodes=100,
+                                epochs=100, batch_size=100, hidden_layers=5, dropout=0.5,
+                                activation_in=['tanh', 'softmax', 'selu'], activation_out=['tanh', 'softmax', 'selu'], loss_function=['mse'], optimizer=['adam', 'sgd']):
         
         self.population_size = population_size
         self.tournamet_size = tournamet_size
@@ -97,14 +99,23 @@ class GeneticTuner:
             self.population.append(self.getRandomChromosome())
             
     def run_MLP(self, chromosome):
+        # Implement Early Stopping
         self.print_message("Current Chromosome", chromosome)
         (nodes, epochs, batch_size, hidden_layers, dropout, act_in, act_out, loss_fcn, optimizer) = chromosome
-        steps_per_epoch = np.ceil(self.image_count/batch_size)
-        image_generator = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255)
+        steps_per_epoch = np.ceil((self.image_count/batch_size)*.8)
+        validation_steps = np.ceil((self.image_count/batch_size)*.2)
+        image_generator = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255, validation_split=0.2)
         train_data_gen = image_generator.flow_from_directory(directory=str(self.full_directory),
                                                             batch_size=batch_size,
                                                             target_size=(self.image_height, self.image_width),
-                                                            classes = list(self.class_names))
+                                                            classes = list(self.class_names),
+                                                            subset="training")
+
+        validation_data_gen = image_generator.flow_from_directory(directory=str(self.full_directory),
+                                                                batch_size=batch_size,
+                                                                target_size=(self.image_height, self.image_width),
+                                                                classes = list(self.class_names),
+                                                                subset="validation")
 
         model = Sequential()
         model.add(Flatten(input_shape=(self.image_height, self.image_width, 3)))
@@ -123,9 +134,11 @@ class GeneticTuner:
             train_data_gen,
             steps_per_epoch=steps_per_epoch,
             epochs=epochs,
+            validation_data=validation_data_gen,
+            validation_steps=validation_steps
         )
 
-        self.fitness_history.append((history.history['loss'][-1], chromosome))
+        self.fitness_history.append((history.history['val_loss'][-1], chromosome))
 
     def run_tournament_selection(self):
         fittest_loss = math.inf
@@ -172,10 +185,8 @@ class GeneticTuner:
                 for chromosome in self.population:
                     self.run_MLP(chromosome)
 
-                with open("fitness_history.json", "w") as f:
-                    data = json.load(f)
-                    data.update({"Generation" + str(i): self.fitness_history})
-                    json.dump(data, f)
+                with open("generation{}.json".format(i), 'w') as f:
+                    json.dump({"Generation" + str(i): self.fitness_history}, f)                    
                 
                 self.select_parents()
                 self.crossover()
